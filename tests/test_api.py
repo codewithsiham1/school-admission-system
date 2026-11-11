@@ -1,4 +1,4 @@
-"""API integration tests. Start Docker Compose first, then: python -m pip install requests && python -m unittest discover -s tests -v"""
+
 import concurrent.futures, os, unittest, uuid
 import requests
 BASE = os.getenv('BASE_URL', 'http://localhost:8080/api')

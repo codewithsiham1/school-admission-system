@@ -36,7 +36,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapPost("/classes", async (CreateClassRequest input, AdmissionDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Trim().Length > 160 || input.TotalSeats <= 0)
-        return Results.BadRequest(new { message = "Class name দিন এবং seat সংখ্যা ১ বা তার বেশি দিন।" });
+        return Results.BadRequest(new { message = "Enter a class name and specify a seat count of 1 or more." });
     var entity = new AdmissionClass { Name = input.Name.Trim(), TotalSeats = input.TotalSeats };
     db.Classes.Add(entity); await db.SaveChangesAsync();
     return Results.Created($"/classes/{entity.Id}", new { id = entity.Id.ToString(), name = entity.Name, totalSeats = entity.TotalSeats });
@@ -60,7 +60,7 @@ app.MapGet("/classes", async (AdmissionDbContext db) =>
 });
 app.MapGet("/classes/{classId:guid}", async (Guid classId, AdmissionDbContext db) =>
 {
-    var c = await db.Classes.FindAsync(classId); if (c is null) return Results.NotFound(new { message = "Class পাওয়া যায়নি।" });
+    var c = await db.Classes.FindAsync(classId); if (c is null) return Results.NotFound(new { message = "Class not found." });
     return Results.Ok(await ClassDto(db, c));
 });
 
@@ -68,7 +68,7 @@ app.MapPost("/classes/{classId:guid}/holds", async (Guid classId, HttpRequest re
 {
     var studentId = Student(request);
     if (studentId is null || studentId.Length is < 5 or > 32 || !studentId.All(char.IsDigit))
-        return Results.BadRequest(new { message = "সঠিক জন্ম নিবন্ধন নম্বর X-Student-Id header-এ পাঠান।" });
+        return Results.BadRequest(new { message = "Send the correct birth registration number in the X-Student-Id header." });
     // Student advisory lock + class row lock serialize cross-class student checks and seat allocation.
     await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
     try
@@ -86,45 +86,45 @@ app.MapPost("/classes/{classId:guid}/holds", async (Guid classId, HttpRequest re
         if (existing is not null)
         {
             await db.SaveChangesAsync(); await tx.CommitAsync();
-            return Results.Conflict(new { message = existing.Status == "CONFIRMED" ? "এই শিক্ষার্থীর ভর্তি ইতিমধ্যে নিশ্চিত।" : "এই শিক্ষার্থীর একটি active application আছে।", holdId = existing.Id });
+            return Results.Conflict(new { message = existing.Status == "CONFIRMED" ? "This student's admission is already confirmed." : "This student has an active application.", holdId = existing.Id });
         }
 
         // Lock the class row so concurrent students cannot take the same final seat.
         var c = await db.Classes.FromSqlInterpolated($"SELECT * FROM \"Classes\" WHERE \"Id\" = {classId} FOR UPDATE").FirstOrDefaultAsync();
-        if (c is null) return Results.NotFound(new { message = "Class পাওয়া যায়নি।" });
+        if (c is null) return Results.NotFound(new { message = "Class not found." });
         var occupied = await db.Holds.CountAsync(h => h.ClassId == classId && (h.Status == "CONFIRMED" || (h.Status == "HELD" && h.ExpiresAt > now)));
-        if (occupied >= c.TotalSeats) return Results.Conflict(new { message = "দুঃখিত, এই Class-এর সব seat পূর্ণ।" });
+        if (occupied >= c.TotalSeats) return Results.Conflict(new { message = "Sorry, all seats in this class are full." });
         var hold = new AdmissionHold { ClassId = classId, StudentId = studentId, ExpiresAt = now.AddSeconds(HoldSeconds()) };
         db.Holds.Add(hold); await db.SaveChangesAsync(); await tx.CommitAsync();
         return Results.Created($"/holds/{hold.Id}", new HoldResponse(hold.Id.ToString(), classId.ToString(), studentId, hold.Status, hold.ExpiresAt));
     }
     catch (Exception ex) when (ex is DbUpdateException or NpgsqlException)
     {
-        await tx.RollbackAsync(); return Results.Conflict(new { message = "একই সময়ে অনেক আবেদন এসেছে। অনুগ্রহ করে আবার চেষ্টা করুন।" });
+        await tx.RollbackAsync(); return Results.Conflict(new { message = "Many applications have been received at the same time. Please try again." });
     }
 });
 
 app.MapGet("/holds/{holdId:guid}", async (Guid holdId, AdmissionDbContext db) =>
 {
-    var h = await db.Holds.FindAsync(holdId); if (h is null) return Results.NotFound(new { message = "Application পাওয়া যায়নি।" });
+    var h = await db.Holds.FindAsync(holdId); if (h is null) return Results.NotFound(new { message = "Application not found." });
     if (h.Status == "HELD" && h.ExpiresAt <= DateTime.UtcNow) { h.Status = "EXPIRED"; await db.SaveChangesAsync(); }
     return Results.Ok(new HoldStatusResponse(h.Id.ToString(), h.ClassId.ToString(), h.Status, h.ExpiresAt));
 });
 app.MapPost("/holds/{holdId:guid}/confirm", async (Guid holdId, HttpRequest request, AdmissionDbContext db) =>
 {
-    var studentId = Student(request); if (studentId is null) return Results.BadRequest(new { message = "X-Student-Id header প্রয়োজন।" });
+    var studentId = Student(request); if (studentId is null) return Results.BadRequest(new { message = "The X-Student-Id header is required." });
     if (studentId.Length is < 5 or > 32 || !studentId.All(char.IsDigit))
-        return Results.BadRequest(new { message = "সঠিক জন্ম নিবন্ধন নম্বর দিন।" });
+        return Results.BadRequest(new { message = "Provide the correct birth registration number." });
     await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
     var h = await db.Holds.FromSqlInterpolated($"SELECT * FROM \"Holds\" WHERE \"Id\" = {holdId} FOR UPDATE").FirstOrDefaultAsync();
-    if (h is null) return Results.NotFound(new { message = "Application পাওয়া যায়নি।" });
-    if (h.StudentId != studentId) return Results.Json(new { message = "এই আবেদনটি আপনার নয়।" }, statusCode: 403);
+    if (h is null) return Results.NotFound(new { message = "Application not found." });
+    if (h.StudentId != studentId) return Results.Json(new { message = "This application is not yours." }, statusCode: 403);
     if (h.Status == "CONFIRMED") { await tx.CommitAsync(); return Results.Ok(new { holdId = h.Id.ToString(), status = h.Status }); }
     if (h.Status != "HELD" || h.ExpiresAt <= DateTime.UtcNow)
     {
         if (h.Status == "HELD") { h.Status = "EXPIRED"; await db.SaveChangesAsync(); }
         await tx.CommitAsync();
-        return Results.Conflict(new { message = "আবেদনের সময় শেষ। নতুন করে আবেদন করুন।", status = h.Status });
+        return Results.Conflict(new { message = "The application period has ended. Please submit a new application.", status = h.Status });
     }
     h.Status = "CONFIRMED"; h.ConfirmedAt = DateTime.UtcNow; await db.SaveChangesAsync(); await tx.CommitAsync();
     return Results.Ok(new { holdId = h.Id.ToString(), status = h.Status });
@@ -134,16 +134,16 @@ app.MapDelete("/holds/{holdId:guid}", async (Guid holdId, HttpRequest request, A
     var studentId = Student(request); if (studentId is null || studentId.Length is < 5 or > 32 || !studentId.All(char.IsDigit)) return Results.BadRequest(new { message = "সঠিক জন্ম নিবন্ধন নম্বর দিন।" });
     await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
     var h = await db.Holds.FromSqlInterpolated($"SELECT * FROM \"Holds\" WHERE \"Id\" = {holdId} FOR UPDATE").FirstOrDefaultAsync();
-    if (h is null) return Results.NotFound(new { message = "Application পাওয়া যায়নি।" });
-    if (h.StudentId != studentId) return Results.Json(new { message = "এই আবেদনটি আপনার নয়।" }, statusCode: 403);
-    if (h.Status == "CONFIRMED") return Results.Conflict(new { message = "নিশ্চিত ভর্তি বাতিল করা যাবে না।" });
+    if (h is null) return Results.NotFound(new { message = "Application not found." });
+    if (h.StudentId != studentId) return Results.Json(new { message = "This application is not yours." }, statusCode: 403);
+    if (h.Status == "CONFIRMED") return Results.Conflict(new { message = "A confirmed admission cannot be cancelled." });
     if (h.Status == "HELD") { h.Status = "CANCELLED"; await db.SaveChangesAsync(); }
     await tx.CommitAsync();
     return Results.NoContent();
 });
 app.MapGet("/me/holds", async (HttpRequest request, AdmissionDbContext db) =>
 {
-    var studentId = Student(request); if (studentId is null) return Results.BadRequest(new { message = "জন্ম নিবন্ধন নম্বর দিন।" });
+    var studentId = Student(request); if (studentId is null) return Results.BadRequest(new { message = "Provide your birth registration number." });
     var now = DateTime.UtcNow;
     var items = await db.Holds.Include(h => h.Class).Where(h => h.StudentId == studentId).OrderByDescending(h => h.CreatedAt).ToListAsync();
     foreach (var h in items.Where(h => h.Status == "HELD" && h.ExpiresAt <= now)) h.Status = "EXPIRED";
