@@ -73,10 +73,3 @@ ASSUMPTIONS.md                 Decisions where the brief is silent
 AI_USAGE.md                    AI assistance disclosure
 ```
 
-## Before submission
-
-1. Run `docker compose up --build` from a clean checkout.
-2. Test class creation, hold, confirm, cancel, expiry, and refresh persistence.
-3. Run the concurrency smoke test.
-4. Inspect `ASSUMPTIONS.md` and `AI_USAGE.md` and update them to match your actual review and changes.
-5. Commit the source and push it to your own **public GitHub repository**. Do not commit `.env` or real credentials.
