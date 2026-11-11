@@ -15,8 +15,7 @@ public sealed class AdmissionDbContext(DbContextOptions<AdmissionDbContext> opti
         model.Entity<AdmissionHold>().Property(x => x.Status).HasMaxLength(16).IsRequired();
         model.Entity<AdmissionHold>().HasOne(x => x.Class).WithMany(x => x.Holds).HasForeignKey(x => x.ClassId);
         model.Entity<AdmissionHold>().HasIndex(x => new { x.ClassId, x.StudentId, x.Status });
-        // A student can have only one active hold or confirmed admission across ALL classes.
-        // Expired holds are changed to EXPIRED before a new application is inserted.
+       
         model.Entity<AdmissionHold>()
             .HasIndex(x => x.StudentId)
             .IsUnique()
