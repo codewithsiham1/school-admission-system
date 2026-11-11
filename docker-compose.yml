@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: school_admission
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - school_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d school_admission"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  backend:
+    build: ./backend/SchoolAdmission.Api
+    environment:
+      DATABASE_URL: Host=db;Port=5432;Database=school_admission;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      HOLD_DURATION_SECONDS: ${HOLD_DURATION_SECONDS:-600}
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      db:
+        condition: service_healthy
+    expose: ["8080"]
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "8080:80"
+    depends_on: [backend]
+    restart: unless-stopped
+volumes:
+  school_data:
