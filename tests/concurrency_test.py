@@ -1,4 +1,4 @@
-"""Concurrency smoke test. Run: python -m pip install requests && python tests/concurrency_test.py"""
+
 import concurrent.futures, os, requests, uuid
 BASE = os.getenv('BASE_URL', 'http://localhost:8080/api')
 created = requests.post(f'{BASE}/classes', json={'name': f'Concurrency test {uuid.uuid4()}', 'totalSeats': 3}, timeout=10)

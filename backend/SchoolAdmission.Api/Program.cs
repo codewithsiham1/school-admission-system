@@ -17,7 +17,7 @@ var app = builder.Build();
 app.UseCors();
 app.UseSwagger(); app.UseSwaggerUI();
 
-// Database is persistent in the PostgreSQL volume. EnsureCreated keeps this take-home app runnable without a migration command.
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AdmissionDbContext>();
